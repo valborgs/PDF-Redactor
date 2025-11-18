@@ -25,7 +25,8 @@ from PyQt6.QtWidgets import (
     QScrollArea,
 )
 from PyQt6.QtCore import Qt, QSize, QPoint, QRect, pyqtSignal
-from PyQt6.QtGui import QKeySequence, QAction, QImage, QPixmap, QPainter, QColor, QPen, QBrush
+from PyQt6.QtGui import QKeySequence, QAction, QImage, QPixmap, QPainter, QColor, QPen, QBrush, QIcon
+from PyQt6.QtWidgets import QStyle
 
 
 @dataclass
@@ -174,23 +175,23 @@ class PdfPageView(QWidget):
             
             # 화면 업데이트
             self.update()
-    
+
     def wheelEvent(self, event) -> None:
         """마우스 휠 이벤트 (Ctrl + 휠로 줌)"""
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-            # 줌 변경 시그널을 부모로 전달
+            # Ctrl이 눌린 상태에서는 확대/축소만 처리
             delta = event.angleDelta().y()
+            parent = self.parent()
             if delta > 0:
-                # 줌 인 (최대 200%)
-                if hasattr(self.parent(), 'zoom_in'):
-                    self.parent().zoom_in()
+                if parent is not None and hasattr(parent, "zoom_in"):
+                    parent.zoom_in()
             else:
-                # 줌 아웃 (최소 높이에 맞추기)
-                if hasattr(self.parent(), 'zoom_out'):
-                    self.parent().zoom_out()
+                if parent is not None and hasattr(parent, "zoom_out"):
+                    parent.zoom_out()
             event.accept()
         else:
-            event.ignore()
+            # Ctrl이 아닐 때는 기본 스크롤 동작 유지
+            super().wheelEvent(event)
     
     def _convert_to_pdf_rect(self, screen_rect: QRect) -> Optional[fitz.Rect]:
         """화면 좌표를 PDF 페이지 좌표로 변환"""
@@ -271,6 +272,19 @@ class ScrollablePdfView(QScrollArea):
             self.zoom_level = max(self.zoom_level - 0.1, self.min_zoom)
             if hasattr(self.parent(), 'update_page_view'):
                 self.parent().update_page_view()
+
+    def wheelEvent(self, event) -> None:
+        """마우스 휠 이벤트 (Ctrl + 휠로 줌)"""
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self.zoom_in()
+            else:
+                self.zoom_out()
+            event.accept()
+        else:
+            # 기본 스크롤 동작 유지
+            super().wheelEvent(event)
 
 
 class PdfDocumentManager:
@@ -551,6 +565,11 @@ class MainWindow(QMainWindow):
         open_folder_action.triggered.connect(self.open_folder)
         file_menu.addAction(open_folder_action)
 
+        # 마스킹 내역 엑셀 저장 액션
+        export_excel_action = QAction("마스킹 내역 엑셀 저장...", self)
+        export_excel_action.triggered.connect(self.export_masks_to_excel)
+        file_menu.addAction(export_excel_action)
+
         file_menu.addSeparator()
 
         # 종료 액션
@@ -572,6 +591,24 @@ class MainWindow(QMainWindow):
         self.toggle_pdf_list_action.setText("PDF 파일 목록")
         view_menu.addAction(self.toggle_pdf_list_action)
 
+        # 도움말 메뉴
+        help_menu = menubar.addMenu("도움말(&H)")
+
+        # 단축키 안내
+        shortcuts_action = QAction("단축키 안내", self)
+        shortcuts_action.triggered.connect(self.show_shortcuts_help)
+        help_menu.addAction(shortcuts_action)
+
+        # 사용 방법
+        usage_action = QAction("사용 방법", self)
+        usage_action.triggered.connect(self.show_usage_help)
+        help_menu.addAction(usage_action)
+
+        # 정보
+        about_action = QAction("정보", self)
+        about_action.triggered.connect(self.show_about_dialog)
+        help_menu.addAction(about_action)
+
     def setup_toolbar(self) -> None:
         """툴바 설정"""
         toolbar = QToolBar("메인 툴바")
@@ -579,12 +616,14 @@ class MainWindow(QMainWindow):
         self.addToolBar(toolbar)
 
         # PDF 열기 버튼
-        open_pdf_action = QAction("PDF 열기", self)
+        file_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+        open_pdf_action = QAction(file_icon, "PDF 열기", self)
         open_pdf_action.triggered.connect(self.open_pdf)
         toolbar.addAction(open_pdf_action)
 
         # 폴더 열기 버튼
-        open_folder_action = QAction("폴더 열기", self)
+        folder_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon)
+        open_folder_action = QAction(folder_icon, "폴더 열기", self)
         open_folder_action.triggered.connect(self.open_folder)
         toolbar.addAction(open_folder_action)
 
@@ -615,6 +654,14 @@ class MainWindow(QMainWindow):
         # 삭제 (Del)
         self.shortcut_delete = QShortcut(QKeySequence(Qt.Key.Key_Delete), self)
         self.shortcut_delete.activated.connect(self.delete_selected_mask)
+
+        # 확대 (+)
+        self.shortcut_zoom_in = QShortcut(QKeySequence(Qt.Key.Key_Plus), self)
+        self.shortcut_zoom_in.activated.connect(self.zoom_in)
+
+        # 축소 (-)
+        self.shortcut_zoom_out = QShortcut(QKeySequence(Qt.Key.Key_Minus), self)
+        self.shortcut_zoom_out.activated.connect(self.zoom_out)
 
     def setup_statusbar(self) -> None:
         """상태바 설정"""
@@ -664,6 +711,54 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"페이지 표시 오류: {str(e)}")
             self.statusBar().showMessage(f"오류: {str(e)}")
+
+    def zoom_in(self) -> None:
+        """PDF 확대"""
+        self.scrollable_pdf_view.zoom_in()
+
+    def zoom_out(self) -> None:
+        """PDF 축소"""
+        self.scrollable_pdf_view.zoom_out()
+
+    def show_shortcuts_help(self) -> None:
+        """단축키 안내 다이얼로그 표시"""
+        shortcuts_text = (
+            "<b>[파일 관련]</b><br>"
+            "<b>Ctrl+O</b> : PDF 열기<br>"
+            "<b>Ctrl+Shift+O</b> : 폴더 열기<br>"
+            "<b>Ctrl+S</b> : 마스킹 저장<br><br>"
+            "<b>[페이지 이동]</b><br>"
+            "<b>→ / PageDown</b> : 다음 페이지<br>"
+            "<b>← / PageUp</b> : 이전 페이지<br><br>"
+            "<b>[마스킹]</b><br>"
+            "<b>Ctrl+드래그</b> : 마스킹 영역 선택<br>"
+            "<b>Del</b> : 선택된 마스킹 삭제<br><br>"
+            "<b>[기타]</b><br>"
+            "<b>Ctrl+Q</b> : 프로그램 종료"
+        )
+        QMessageBox.information(self, "단축키 안내", shortcuts_text)
+
+    def show_usage_help(self) -> None:
+        """사용 방법 안내 다이얼로그 표시"""
+        usage_text = (
+            "1. 상단 툴바 또는 파일 메뉴에서 PDF 또는 폴더를 엽니다.\n"
+            "2. 좌측 '마스킹 리스트' 패널은 생성된 마스킹 정보를 보여줍니다.\n"
+            "3. 중앙 PDF 화면에서 Ctrl 키를 누른 상태로 마우스를 드래그하여 마스킹 영역을 선택합니다.\n"
+            "4. 우측 'PDF 파일 목록'에서 다른 PDF를 더블클릭하여 전환할 수 있습니다.\n"
+            "5. 마스킹이 완료되면 Ctrl+S로 마스킹을 적용하고 저장합니다.\n"
+        )
+        QMessageBox.information(self, "사용 방법", usage_text)
+
+    def show_about_dialog(self) -> None:
+        """프로그램 정보 다이얼로그 표시"""
+        about_text = (
+            "PDF Mask\n\n"
+            "PDF 문서의 민감한 정보를 마스킹하기 위한 PyQt6 기반 도구입니다.\n"
+            "PyMuPDF를 사용하여 PDF를 렌더링하고, Redaction 기능으로 내용을 영구적으로 가립니다.\n\n"
+            "버전: 1.0\n"
+            "제작: (작성자 정보 기입 예정)"
+        )
+        QMessageBox.information(self, "정보", about_text)
 
     def reload_current_pdf(self) -> None:
         """현재 PDF 파일을 다시 로드"""
@@ -774,6 +869,74 @@ class MainWindow(QMainWindow):
         self.update_page_view()
         
         print(f"{len(rows_to_delete)}개의 마스킹 항목 삭제됨")
+
+    def export_masks_to_excel(self) -> None:
+        """마스킹 작업 내역을 엑셀 파일로 저장"""
+        # 저장할 마스크가 없는 경우
+        if not self.masks:
+            QMessageBox.information(self, "알림", "저장할 마스킹 내역이 없습니다.")
+            return
+
+        # 현재 PDF 파일 정보가 없는 경우
+        if self.pdf_manager.file_path is None:
+            QMessageBox.warning(self, "경고", "열려 있는 PDF 파일 정보가 없습니다.")
+            return
+
+        # openpyxl 지연 로딩
+        try:
+            from openpyxl import Workbook, load_workbook
+        except ImportError:
+            QMessageBox.critical(
+                self,
+                "오류",
+                "openpyxl 패키지가 설치되어 있지 않습니다.\n\n"
+                "다음 명령으로 설치 후 다시 시도해주세요.\n"
+                "pip install openpyxl"
+            )
+            return
+
+        from datetime import datetime
+
+        try:
+            # 저장 경로 및 파일명 구성 (현재 PDF와 같은 폴더)
+            pdf_path = self.pdf_manager.file_path
+            base_dir = os.path.dirname(pdf_path) or os.getcwd()
+            today_str = datetime.now().strftime("%Y%m%d")
+            filename = f"마스킹_작업내역_{today_str}.xlsx"
+            save_path = os.path.join(base_dir, filename)
+
+            # 워크북 생성 또는 로드
+            if os.path.exists(save_path):
+                wb = load_workbook(save_path)
+                ws = wb.active
+            else:
+                wb = Workbook()
+                ws = wb.active
+                ws.title = "마스킹 내역"
+                # 헤더 행
+                ws.append(["작업일시", "PDF 파일명", "페이지", "마스킹 영역 좌표", "메모"])
+
+            pdf_name = os.path.basename(pdf_path)
+
+            # 마스크 데이터 추가
+            for mask in self.masks:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                page_number = mask.page_index + 1
+                rect = mask.rect
+                coords = f"({rect.x0:.2f}, {rect.y0:.2f}, {rect.x1:.2f}, {rect.y1:.2f})"
+                note = mask.note or ""
+
+                ws.append([timestamp, pdf_name, page_number, coords, note])
+
+            # 파일 저장 (별도 완료 메시지는 표시하지 않음)
+            wb.save(save_path)
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "저장 오류",
+                f"엑셀 파일 저장 중 오류가 발생했습니다.\n\n{str(e)}"
+            )
 
     # 메뉴/툴바 액션 슬롯
     def open_pdf(self) -> None:
@@ -898,6 +1061,8 @@ class MainWindow(QMainWindow):
                 try:
                     # 마스킹 적용 및 저장
                     self.pdf_manager.apply_masks_and_save(self.masks)
+                    # 마스킹 내역 엑셀 저장
+                    self.export_masks_to_excel()
                     
                     # 성공 메시지
                     QMessageBox.information(
