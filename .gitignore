@@ -20,3 +20,6 @@ masks_data/
 
 # Progress file
 progress.json
+
+# Logs folder
+logs/

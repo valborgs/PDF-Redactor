@@ -8,6 +8,7 @@ import os
 import shutil
 import json
 import hashlib
+import logging
 from typing import Optional
 from dataclasses import dataclass
 from datetime import datetime
@@ -489,6 +490,106 @@ class ScrollablePdfView(QScrollArea):
             super().wheelEvent(event)
 
 
+class LogManager:
+    """로그 관리 클래스"""
+    
+    def __init__(self) -> None:
+        # 프로젝트 루트 경로
+        self.project_root = os.path.dirname(os.path.abspath(__file__))
+        self.logs_dir = os.path.join(self.project_root, "logs")
+        
+        # 로그 폴더 생성
+        os.makedirs(self.logs_dir, exist_ok=True)
+        
+        # 일자별 로그 파일 설정
+        self.setup_logger()
+    
+    def setup_logger(self) -> None:
+        """로거 설정 (일자별 로그 파일)"""
+        today_str = datetime.now().strftime("%Y%m%d")
+        log_filename = f"pdfmask_{today_str}.log"
+        log_filepath = os.path.join(self.logs_dir, log_filename)
+        
+        # 기존 핸들러 제거
+        logger = logging.getLogger('PDFMask')
+        logger.handlers.clear()
+        
+        # 로거 레벨 설정
+        logger.setLevel(logging.INFO)
+        
+        # 파일 핸들러
+        file_handler = logging.FileHandler(log_filepath, encoding='utf-8')
+        file_handler.setLevel(logging.INFO)
+        
+        # 포맷 설정
+        formatter = logging.Formatter(
+            '%(asctime)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        file_handler.setFormatter(formatter)
+        
+        logger.addHandler(file_handler)
+        
+        self.logger = logger
+    
+    def info(self, message: str) -> None:
+        """정보 로그"""
+        self.logger.info(message)
+    
+    def warning(self, message: str) -> None:
+        """경고 로그"""
+        self.logger.warning(message)
+    
+    def error(self, message: str) -> None:
+        """에러 로그"""
+        self.logger.error(message)
+    
+    def log_app_start(self) -> None:
+        """프로그램 시작 로그"""
+        self.info("=" * 60)
+        self.info("PDF Mask Application Started")
+        self.info("=" * 60)
+    
+    def log_app_end(self) -> None:
+        """프로그램 종료 로그"""
+        self.info("=" * 60)
+        self.info("PDF Mask Application Closed")
+        self.info("=" * 60)
+    
+    def log_license_check(self, success: bool, message: str) -> None:
+        """라이선스 인증 로그"""
+        if success:
+            self.info(f"License Check: SUCCESS - {message}")
+        else:
+            self.warning(f"License Check: FAILED - {message}")
+    
+    def log_pdf_open(self, file_path: str) -> None:
+        """PDF 파일 열기 로그"""
+        self.info(f"PDF Opened: {file_path}")
+    
+    def log_folder_open(self, folder_path: str, file_count: int) -> None:
+        """폴더 열기 로그"""
+        self.info(f"Folder Opened: {folder_path} ({file_count} PDF files)")
+    
+    def log_mask_save(self, file_path: str, masks: list) -> None:
+        """마스킹 저장 로그"""
+        self.info(f"Mask Saved: {file_path} ({len(masks)} masks)")
+        
+        # 각 마스킹 영역 상세 정보 기록
+        for i, mask in enumerate(masks, 1):
+            rect = mask.rect
+            note = mask.note if mask.note else "(no note)"
+            self.info(
+                f"  Mask #{i}: Page {mask.page_index + 1}, "
+                f"Rect({rect.x0:.2f}, {rect.y0:.2f}, {rect.x1:.2f}, {rect.y1:.2f}), "
+                f"Note: {note}"
+            )
+    
+    def log_error(self, operation: str, error_message: str) -> None:
+        """에러 로그"""
+        self.error(f"Error in {operation}: {error_message}")
+
+
 class ProgressManager:
     """작업 진행상황 관리 클래스"""
     
@@ -888,6 +989,10 @@ class MainWindow(QMainWindow):
         
         # 진행상황 관리자
         self.progress_manager = ProgressManager()
+        
+        # 로그 관리자
+        self.log_manager = LogManager()
+        self.log_manager.log_app_start()
         
         # 마스킹 데이터 저장
         self.masks: list[MaskEntry] = []
@@ -1320,6 +1425,8 @@ class MainWindow(QMainWindow):
             filename = os.path.basename(file_path)
             self.setWindowTitle(f"PDF Mask - {filename}")
             
+            # 로그 기록
+            self.log_manager.log_pdf_open(file_path)
             print(f"PDF 로드 성공: {file_path}")
             
         except Exception as e:
@@ -1578,6 +1685,8 @@ class MainWindow(QMainWindow):
                 item_text = f"✓ {filename}"
             self.pdf_file_list.addItem(item_text)
         
+        # 로그 기록
+        self.log_manager.log_folder_open(folder_path, len(pdf_files))
         print(f"총 {len(pdf_files)}개의 PDF 파일 발견")
         
         # 첫 번째 PDF 또는 복구된 위치에서 시작
@@ -1674,6 +1783,12 @@ class MainWindow(QMainWindow):
                     self.pdf_manager.apply_masks_and_save(self.masks)
                     # 마스킹 내역 엑셀 저장
                     self.export_masks_to_excel()
+                    
+                    # 로그 기록
+                    self.log_manager.log_mask_save(
+                        self.pdf_manager.file_path,
+                        self.masks
+                    )
                     
                     # 성공 메시지
                     QMessageBox.information(
@@ -1793,6 +1908,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         """윈도우 종료 이벤트"""
+        # 로그 기록
+        self.log_manager.log_app_end()
+        
         # PDF 문서 닫기
         self.pdf_manager.close()
         event.accept()
@@ -1803,22 +1921,31 @@ def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("PDF Mask")
     
+    # 임시 로그 관리자 (라이선스 인증용)
+    temp_log = LogManager()
+    
     # 라이선스 확인
     license_manager = LicenseManager()
     
     if not license_manager.is_licensed():
         # 라이선스가 없으면 시리얼 번호 입력 다이얼로그 표시
+        temp_log.log_license_check(False, "No license file found")
         serial_dialog = SerialInputDialog()
         result = serial_dialog.exec()
         
         if result != QDialog.DialogCode.Accepted:
             # 사용자가 취소하면 프로그램 종료
+            temp_log.log_license_check(False, "User cancelled license activation")
             QMessageBox.warning(
                 None,
                 "종료",
                 "라이선스 인증이 필요합니다.\n프로그램을 종료합니다."
             )
             sys.exit(0)
+        else:
+            temp_log.log_license_check(True, "License activated successfully")
+    else:
+        temp_log.log_license_check(True, "License verified")
     
     # 메인 윈도우 표시
     window = MainWindow()
