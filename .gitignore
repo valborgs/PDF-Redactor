@@ -14,3 +14,6 @@ wheels/
 
 # Backup folder
 backup/
+
+# Masks data folder
+masks_data/
