@@ -17,3 +17,6 @@ backup/
 
 # Masks data folder
 masks_data/
+
+# Progress file
+progress.json

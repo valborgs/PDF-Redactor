@@ -489,6 +489,83 @@ class ScrollablePdfView(QScrollArea):
             super().wheelEvent(event)
 
 
+class ProgressManager:
+    """작업 진행상황 관리 클래스"""
+    
+    def __init__(self) -> None:
+        # 프로젝트 루트 경로
+        self.project_root = os.path.dirname(os.path.abspath(__file__))
+        self.progress_file = os.path.join(self.project_root, "progress.json")
+    
+    def save_progress(self, folder_path: str, pdf_files: list[str], completed_files: list[str], current_index: int) -> tuple[bool, str]:
+        """
+        작업 진행상황 저장
+        
+        Args:
+            folder_path: 작업 중인 폴더 경로
+            pdf_files: 전체 PDF 파일 리스트
+            completed_files: 완료된 파일 리스트
+            current_index: 현재 작업 중인 파일 인덱스
+            
+        Returns:
+            tuple[bool, str]: (성공 여부, 메시지)
+        """
+        try:
+            data = {
+                'folder_path': folder_path,
+                'last_updated': datetime.now().isoformat(),
+                'total_files': len(pdf_files),
+                'completed_count': len(completed_files),
+                'current_index': current_index,
+                'pdf_files': [os.path.basename(f) for f in pdf_files],
+                'completed_files': completed_files,
+            }
+            
+            with open(self.progress_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            
+            return True, "진행상황 저장 완료"
+            
+        except Exception as e:
+            return False, f"진행상황 저장 실패: {str(e)}"
+    
+    def load_progress(self) -> tuple[bool, dict, str]:
+        """
+        작업 진행상황 로드
+        
+        Returns:
+            tuple[bool, dict, str]: (성공 여부, 진행상황 데이터, 메시지)
+        """
+        try:
+            if not os.path.exists(self.progress_file):
+                return True, {}, "진행상황 파일 없음"
+            
+            with open(self.progress_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            return True, data, "진행상황 로드 완료"
+            
+        except Exception as e:
+            return False, {}, f"진행상황 로드 실패: {str(e)}"
+    
+    def clear_progress(self) -> tuple[bool, str]:
+        """
+        작업 진행상황 삭제
+        
+        Returns:
+            tuple[bool, str]: (성공 여부, 메시지)
+        """
+        try:
+            if os.path.exists(self.progress_file):
+                os.remove(self.progress_file)
+                return True, "진행상황 삭제 완료"
+            else:
+                return True, "진행상황 파일 없음"
+                
+        except Exception as e:
+            return False, f"진행상황 삭제 실패: {str(e)}"
+
+
 class MaskDataManager:
     """마스킹 데이터 관리 클래스"""
     
@@ -809,12 +886,17 @@ class MainWindow(QMainWindow):
         # 마스킹 데이터 관리자
         self.mask_data_manager = MaskDataManager()
         
+        # 진행상황 관리자
+        self.progress_manager = ProgressManager()
+        
         # 마스킹 데이터 저장
         self.masks: list[MaskEntry] = []
         
         # 폴더 내 PDF 파일 목록
         self.pdf_files: list[str] = []
         self.current_pdf_index: int = -1
+        self.completed_files: list[str] = []  # 완료된 파일 리스트
+        self.current_folder_path: str = ""  # 현재 작업 중인 폴더 경로
         
         # 백업 설정
         self.backup_enabled: bool = True  # 백업 활성화 여부 (기본값: 활성화)
@@ -1460,18 +1542,55 @@ class MainWindow(QMainWindow):
         
         # PDF 파일 목록 저장
         self.pdf_files = pdf_files
+        self.current_folder_path = folder_path
+        self.completed_files = []  # 완료 목록 초기화
+        
+        # 이전 진행상황 확인
+        success, progress_data, msg = self.progress_manager.load_progress()
+        if success and progress_data and progress_data.get('folder_path') == folder_path:
+            # 이전에 작업하던 폴더와 동일한 경우
+            reply = QMessageBox.question(
+                self,
+                "진행상황 복구",
+                f"이전 작업 진행상황이 있습니다.\n\n"
+                f"완료: {progress_data.get('completed_count', 0)}/{progress_data.get('total_files', 0)}\n"
+                f"마지막 작업: {progress_data.get('last_updated', '')}\n\n"
+                f"이어서 작업하시겠습니까?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                # 진행상황 복구
+                self.completed_files = progress_data.get('completed_files', [])
+                start_index = progress_data.get('current_index', 0)
+                
+                # 이미 완료된 파일은 비활성화 표시 (선택적)
+                print(f"진행상황 복구: {len(self.completed_files)}개 파일 완료")
         
         # 리스트 위젯 업데이트
         self.pdf_file_list.clear()
         for file_path in pdf_files:
             filename = os.path.basename(file_path)
-            self.pdf_file_list.addItem(filename)
+            item_text = filename
+            # 완료된 파일 표시
+            if filename in self.completed_files:
+                item_text = f"✓ {filename}"
+            self.pdf_file_list.addItem(item_text)
         
         print(f"총 {len(pdf_files)}개의 PDF 파일 발견")
         
-        # 첫 번째 PDF 자동 열기
+        # 첫 번째 PDF 또는 복구된 위치에서 시작
         if pdf_files:
-            self.load_pdf_from_list(0)
+            if success and progress_data and progress_data.get('folder_path') == folder_path:
+                start_index = progress_data.get('current_index', 0)
+                # 인덱스 범위 체크
+                if 0 <= start_index < len(pdf_files):
+                    self.load_pdf_from_list(start_index)
+                else:
+                    self.load_pdf_from_list(0)
+            else:
+                self.load_pdf_from_list(0)
 
     # PDF 리스트 이벤트
     def on_pdf_list_double_clicked(self, item) -> None:
@@ -1566,6 +1685,21 @@ class MainWindow(QMainWindow):
                     # 마스킹 데이터 초기화
                     self.clear_masks()
                     
+                    # 완료 파일 목록에 추가
+                    if self.pdf_manager.file_path:
+                        filename = os.path.basename(self.pdf_manager.file_path)
+                        if filename not in self.completed_files:
+                            self.completed_files.append(filename)
+                    
+                    # 진행상황 저장
+                    if self.current_folder_path and self.pdf_files:
+                        self.progress_manager.save_progress(
+                            self.current_folder_path,
+                            self.pdf_files,
+                            self.completed_files,
+                            self.current_pdf_index
+                        )
+                    
                     # 다음 파일로 이동할지 확인
                     self.move_to_next_pdf_if_available()
                     
@@ -1611,6 +1745,9 @@ class MainWindow(QMainWindow):
         else:
             # 마지막 파일인 경우
             if self.current_pdf_index == len(self.pdf_files) - 1:
+                # 진행상황 삭제
+                self.progress_manager.clear_progress()
+                
                 QMessageBox.information(
                     self,
                     "완료",
