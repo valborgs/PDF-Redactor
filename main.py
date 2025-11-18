@@ -5,8 +5,12 @@ PyQt6 기반 GUI 애플리케이션
 
 import sys
 import os
+import shutil
+import json
+import hashlib
 from typing import Optional
 from dataclasses import dataclass
+from datetime import datetime
 import fitz  # PyMuPDF
 from PyQt6.QtWidgets import (
     QApplication,
@@ -23,6 +27,10 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QScrollArea,
+    QDialog,
+    QLineEdit,
+    QPushButton,
+    QProgressDialog,
 )
 from PyQt6.QtCore import Qt, QSize, QPoint, QRect, pyqtSignal
 from PyQt6.QtGui import QKeySequence, QAction, QImage, QPixmap, QPainter, QColor, QPen, QBrush, QIcon
@@ -35,6 +43,200 @@ class MaskEntry:
     page_index: int
     rect: fitz.Rect
     note: str = ""
+
+
+class LicenseManager:
+    """라이선스 관리 클래스"""
+    
+    def __init__(self) -> None:
+        # 프로젝트 루트 경로
+        self.project_root = os.path.dirname(os.path.abspath(__file__))
+        self.license_file = os.path.join(self.project_root, ".license")
+    
+    def is_licensed(self) -> bool:
+        """라이선스가 유효한지 확인"""
+        if not os.path.exists(self.license_file):
+            return False
+        
+        try:
+            with open(self.license_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data.get('activated', False)
+        except Exception:
+            return False
+    
+    def validate_serial(self, serial: str) -> tuple[bool, str]:
+        """
+        시리얼 번호 검증 (간단한 로컬 검증)
+        
+        Args:
+            serial: 입력된 시리얼 번호
+            
+        Returns:
+            tuple[bool, str]: (검증 성공 여부, 메시지)
+        """
+        # 시리얼 번호 형식 검증 (예: XXXX-XXXX-XXXX-XXXX)
+        serial = serial.strip().upper()
+        
+        if len(serial) == 0:
+            return False, "시리얼 번호를 입력해주세요."
+        
+        # 간단한 형식 검증
+        parts = serial.split('-')
+        if len(parts) != 4:
+            return False, "올바른 형식이 아닙니다. (XXXX-XXXX-XXXX-XXXX)"
+        
+        for part in parts:
+            if len(part) != 4:
+                return False, "올바른 형식이 아닙니다. (XXXX-XXXX-XXXX-XXXX)"
+        
+        return True, "형식 검증 성공"
+    
+    def activate_license(self, serial: str) -> tuple[bool, str]:
+        """
+        라이선스 활성화 (서버 인증 시뮬레이션)
+        
+        실제 구현에서는 여기서 서버 API를 호출해야 합니다.
+        현재는 로컬에서 간단한 검증만 수행합니다.
+        
+        Args:
+            serial: 시리얼 번호
+            
+        Returns:
+            tuple[bool, str]: (활성화 성공 여부, 메시지)
+        """
+        # 1. 형식 검증
+        valid, msg = self.validate_serial(serial)
+        if not valid:
+            return False, msg
+        
+        # 2. 서버 인증 시뮬레이션
+        # 실제 구현: requests.post('https://license-server.com/activate', ...)
+        
+        # 간단한 해시 기반 검증 (예시)
+        serial_hash = hashlib.sha256(serial.encode()).hexdigest()
+        
+        # 테스트용 시리얼: TEST-1234-5678-ABCD
+        valid_serials = [
+            "TEST-1234-5678-ABCD",
+            "DEMO-0000-0000-0001",
+        ]
+        
+        if serial not in valid_serials:
+            return False, "유효하지 않은 시리얼 번호입니다."
+        
+        # 3. 라이선스 파일 저장
+        try:
+            license_data = {
+                'activated': True,
+                'serial': serial,
+                'serial_hash': serial_hash,
+                'activated_at': datetime.now().isoformat(),
+            }
+            
+            with open(self.license_file, 'w', encoding='utf-8') as f:
+                json.dump(license_data, f, indent=2, ensure_ascii=False)
+            
+            return True, "라이선스 활성화 완료"
+            
+        except Exception as e:
+            return False, f"라이선스 저장 실패: {str(e)}"
+    
+    def deactivate_license(self) -> None:
+        """라이선스 비활성화"""
+        if os.path.exists(self.license_file):
+            try:
+                os.remove(self.license_file)
+            except Exception:
+                pass
+
+
+class SerialInputDialog(QDialog):
+    """시리얼 번호 입력 다이얼로그"""
+    
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.license_manager = LicenseManager()
+        self.init_ui()
+    
+    def init_ui(self) -> None:
+        """UI 초기화"""
+        self.setWindowTitle("라이선스 인증")
+        self.setModal(True)
+        self.setFixedSize(400, 200)
+        
+        layout = QVBoxLayout()
+        
+        # 안내 문구
+        info_label = QLabel(
+            "프로그램을 사용하려면 시리얼 번호를 입력해주세요.\n\n"
+            "형식: XXXX-XXXX-XXXX-XXXX"
+        )
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+        
+        # 시리얼 번호 입력
+        self.serial_input = QLineEdit()
+        self.serial_input.setPlaceholderText("시리얼 번호 입력")
+        self.serial_input.setMaxLength(19)  # XXXX-XXXX-XXXX-XXXX
+        layout.addWidget(self.serial_input)
+        
+        # 버튼 레이아웃
+        button_layout = QHBoxLayout()
+        
+        # 인증 버튼
+        self.activate_button = QPushButton("인증")
+        self.activate_button.clicked.connect(self.activate)
+        button_layout.addWidget(self.activate_button)
+        
+        # 취소 버튼
+        cancel_button = QPushButton("취소")
+        cancel_button.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_button)
+        
+        layout.addLayout(button_layout)
+        
+        # 상태 메시지
+        self.status_label = QLabel("")
+        self.status_label.setStyleSheet("color: red;")
+        layout.addWidget(self.status_label)
+        
+        self.setLayout(layout)
+    
+    def activate(self) -> None:
+        """인증 버튼 클릭"""
+        serial = self.serial_input.text().strip()
+        
+        if not serial:
+            self.status_label.setText("시리얼 번호를 입력해주세요.")
+            return
+        
+        # 진행 다이얼로그 표시
+        progress = QProgressDialog("라이선스 서버에 연결 중...", None, 0, 0, self)
+        progress.setWindowTitle("인증 중")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.show()
+        QApplication.processEvents()
+        
+        # 라이선스 활성화 시도
+        success, message = self.license_manager.activate_license(serial)
+        
+        progress.close()
+        
+        if success:
+            QMessageBox.information(
+                self,
+                "인증 성공",
+                "라이선스가 성공적으로 활성화되었습니다."
+            )
+            self.accept()
+        else:
+            self.status_label.setText(message)
+            QMessageBox.warning(
+                self,
+                "인증 실패",
+                message
+            )
 
 
 class PdfPageView(QWidget):
@@ -434,6 +636,9 @@ class MainWindow(QMainWindow):
         self.pdf_files: list[str] = []
         self.current_pdf_index: int = -1
         
+        # 백업 설정
+        self.backup_enabled: bool = True  # 백업 활성화 여부 (기본값: 활성화)
+        
         self.init_ui()
         self.setup_menu()
         self.setup_toolbar()
@@ -577,6 +782,16 @@ class MainWindow(QMainWindow):
         exit_action.setShortcut(QKeySequence("Ctrl+Q"))
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
+        
+        # 설정 메뉴
+        settings_menu = menubar.addMenu("설정(&S)")
+        
+        # 백업 활성화/비활성화 액션 (체크 가능)
+        self.backup_toggle_action = QAction("PDF 백업 활성화", self)
+        self.backup_toggle_action.setCheckable(True)
+        self.backup_toggle_action.setChecked(self.backup_enabled)
+        self.backup_toggle_action.triggered.connect(self.toggle_backup)
+        settings_menu.addAction(self.backup_toggle_action)
         
         # 보기 메뉴
         view_menu = menubar.addMenu("보기(&V)")
@@ -870,6 +1085,54 @@ class MainWindow(QMainWindow):
         
         print(f"{len(rows_to_delete)}개의 마스킹 항목 삭제됨")
 
+    def toggle_backup(self) -> None:
+        """백업 활성화/비활성화 토글"""
+        self.backup_enabled = self.backup_toggle_action.isChecked()
+        status = "활성화" if self.backup_enabled else "비활성화"
+        print(f"PDF 백업 {status}")
+
+    def backup_current_pdf(self) -> tuple[bool, str]:
+        """
+        현재 PDF 파일을 백업 폴더에 복사
+        
+        Returns:
+            tuple[bool, str]: (성공 여부, 메시지 또는 백업 경로)
+        """
+        if self.pdf_manager.file_path is None:
+            return False, "백업할 PDF 파일이 없습니다."
+        
+        try:
+            # 백업 폴더 구조: 프로젝트최상단/backup/YYYYMMDD/원본파일명.pdf
+            pdf_path = self.pdf_manager.file_path
+            pdf_filename = os.path.basename(pdf_path)
+            
+            # 프로젝트 최상단 경로 (main.py가 있는 위치)
+            project_root = os.path.dirname(os.path.abspath(__file__))
+            
+            # 백업 폴더 생성
+            today_str = datetime.now().strftime("%Y%m%d")
+            backup_base = os.path.join(project_root, "backup")
+            backup_dir = os.path.join(backup_base, today_str)
+            
+            # 폴더가 없으면 생성
+            os.makedirs(backup_dir, exist_ok=True)
+            
+            # 백업 파일 경로
+            backup_path = os.path.join(backup_dir, pdf_filename)
+            
+            # 이미 백업된 파일이 있는지 확인
+            if os.path.exists(backup_path):
+                # 같은 파일이면 백업 스킵
+                return True, f"이미 백업된 파일: {backup_path}"
+            
+            # 파일 복사
+            shutil.copy2(pdf_path, backup_path)
+            
+            return True, backup_path
+            
+        except Exception as e:
+            return False, f"백업 실패: {str(e)}"
+
     def export_masks_to_excel(self) -> None:
         """마스킹 작업 내역을 엑셀 파일로 저장"""
         # 저장할 마스크가 없는 경우
@@ -1059,6 +1322,25 @@ class MainWindow(QMainWindow):
             
             if reply == QMessageBox.StandardButton.Yes:
                 try:
+                    # 백업 수행 (활성화된 경우)
+                    if self.backup_enabled:
+                        backup_success, backup_msg = self.backup_current_pdf()
+                        
+                        if not backup_success:
+                            # 백업 실패 시 사용자에게 확인
+                            retry_reply = QMessageBox.warning(
+                                self,
+                                "백업 실패",
+                                f"{backup_msg}\n\n백업 없이 계속 진행하시겠습니까?",
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                QMessageBox.StandardButton.No
+                            )
+                            
+                            if retry_reply == QMessageBox.StandardButton.No:
+                                return  # 저장 취소
+                        else:
+                            print(f"백업 완료: {backup_msg}")
+                    
                     # 마스킹 적용 및 저장
                     self.pdf_manager.apply_masks_and_save(self.masks)
                     # 마스킹 내역 엑셀 저장
@@ -1174,6 +1456,24 @@ def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("PDF Mask")
     
+    # 라이선스 확인
+    license_manager = LicenseManager()
+    
+    if not license_manager.is_licensed():
+        # 라이선스가 없으면 시리얼 번호 입력 다이얼로그 표시
+        serial_dialog = SerialInputDialog()
+        result = serial_dialog.exec()
+        
+        if result != QDialog.DialogCode.Accepted:
+            # 사용자가 취소하면 프로그램 종료
+            QMessageBox.warning(
+                None,
+                "종료",
+                "라이선스 인증이 필요합니다.\n프로그램을 종료합니다."
+            )
+            sys.exit(0)
+    
+    # 메인 윈도우 표시
     window = MainWindow()
     window.show()
     
