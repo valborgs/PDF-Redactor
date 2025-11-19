@@ -598,10 +598,21 @@ class MainWindow(QMainWindow):
         try:
             # 저장 경로 및 파일명 구성
             pdf_path = self.pdf_manager.file_path
-            base_dir = os.path.dirname(pdf_path) or os.getcwd()
+            # 프로젝트 최상위 경로 찾기
+            # 현재 파일: src/pdfmask/ui/main_window.py → 4단계 위로 올라가서 프로젝트 루트
+            current_file = os.path.abspath(__file__)  # .../src/pdfmask/ui/main_window.py
+            ui_dir = os.path.dirname(current_file)     # .../src/pdfmask/ui
+            pdfmask_dir = os.path.dirname(ui_dir)      # .../src/pdfmask
+            src_dir = os.path.dirname(pdfmask_dir)     # .../src
+            project_root = os.path.dirname(src_dir)    # .../ (프로젝트 루트)
+            xls_dir = os.path.join(project_root, "xls")
+            
+            # xls 폴더가 없으면 생성
+            os.makedirs(xls_dir, exist_ok=True)
+            
             today_str = datetime.now().strftime("%Y%m%d")
             filename = f"마스킹_작업내역_{today_str}.xlsx"
-            save_path = os.path.join(base_dir, filename)
+            save_path = os.path.join(xls_dir, filename)
 
             # 워크북 생성 또는 로드
             if os.path.exists(save_path):
@@ -628,6 +639,13 @@ class MainWindow(QMainWindow):
 
             # 파일 저장
             wb.save(save_path)
+            
+            # 저장 완료 메시지
+            QMessageBox.information(
+                self,
+                "저장 완료",
+                f"엑셀 파일이 저장되었습니다.\n\n경로: {save_path}"
+            )
 
         except Exception as e:
             QMessageBox.critical(

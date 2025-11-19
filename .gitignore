@@ -23,3 +23,6 @@ progress.json
 
 # Logs folder
 logs/
+
+# Excel export folder
+xls/

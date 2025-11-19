@@ -310,6 +310,9 @@ pdfmask/
 ├── logs/                      # 로그 파일 (일자별, 자동 생성)
 │   └── pdfmask_YYYYMMDD.log
 │
+├── xls/                       # 엑셀 작업 내역 (일자별, 자동 생성)
+│   └── 마스킹_작업내역_YYYYMMDD.xlsx
+│
 ├── progress.json              # 진행 상황 (자동 생성/삭제)
 ├── .license                   # 라이선스 파일
 ├── pyproject.toml             # 프로젝트 설정
