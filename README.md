@@ -23,7 +23,11 @@ uv sync
 
 ### 실행
 ```bash
-uv run python main.py
+# 방법 1: 직접 실행
+uv run python src/main.py
+
+# 방법 2: 스크립트로 실행
+uv run pdfmask
 ```
 
 ### 첫 실행 시
@@ -81,18 +85,37 @@ Redaction 적용 (흰색, 영구 제거)
 다음 파일 이동 제안
 ```
 
-## 📂 자동 생성 파일
+## 📂 프로젝트 구조
 
 ```
 pdfmask/
-├── backup/                    # 원본 백업 (일자별)
-│   └── 20251118/*.pdf
-├── masks_data/                # 마스킹 데이터 (일자별)
-│   └── mask_data_20251118.json
-├── logs/                      # 로그 파일 (일자별)
-│   └── pdfmask_20251118.log
+├── src/                       # 소스 코드
+│   ├── main.py               # 애플리케이션 진입점 (50줄)
+│   └── pdfmask/              # 메인 패키지 (모듈화)
+│       ├── core/             # 데이터 모델 (MaskEntry)
+│       ├── managers/         # 비즈니스 로직 (5개 Manager)
+│       ├── ui/               # UI 컴포넌트 (4개 클래스)
+│       └── utils/            # 유틸리티 (향후 확장)
+│
+├── docs/                      # 📚 개발자 문서
+│   ├── SPECIFICATION.md      # 기능 명세서 (1500줄)
+│   ├── ARCHITECTURE.md       # 아키텍처 문서 (800줄)
+│   ├── PROJECT_SUMMARY.md    # 프로젝트 요약 (600줄)
+│   ├── REFACTORING_SUMMARY.md # 리팩토링 요약 (500줄)
+│   └── QUICK_START.md        # 빠른 시작 가이드 (400줄)
+│
+├── backup/                    # 원본 백업 (일자별, 자동 생성)
+│   └── YYYYMMDD/*.pdf
+├── masks_data/                # 마스킹 데이터 (일자별, 자동 생성)
+│   └── mask_data_YYYYMMDD.json
+├── logs/                      # 로그 파일 (일자별, 자동 생성)
+│   └── pdfmask_YYYYMMDD.log
+│
 ├── progress.json              # 진행 상황 (자동 생성/삭제)
-└── .license                   # 라이선스 (인증 후 생성)
+├── .license                   # 라이선스 (인증 후 생성)
+├── pyproject.toml             # 프로젝트 설정
+├── README.md                  # 📖 사용자 가이드 (본 문서)
+└── DEVLOG.md                  # 개발 로그
 ```
 
 ## 🎨 UI 구성
@@ -163,6 +186,12 @@ LogManager            # 로그 기록
 
 ## 📝 버전 히스토리
 
+### v1.5.0 (2025-11-19)
+- ✨ **프로젝트 모듈화**: 코드를 기능별 모듈로 분리 (core, managers, ui, utils)
+- 📚 **문서화 완료**: 기능명세서, 아키텍처 문서, 프로젝트 요약 작성
+- 🔧 **유지보수성 향상**: 파일당 평균 150줄로 관리 용이
+- 📂 **구조 개선**: 명확한 책임 분담 및 확장성 확보
+
 ### v1.5 (2025-11-18)
 - ✨ PDF 자동 백업 / 라이선스 인증
 - ✨ 마스킹 데이터 JSON / 진행 상황 추적
@@ -173,9 +202,20 @@ LogManager            # 로그 기록
 
 ## 📖 추가 정보
 
-- **개발 로그**: [DEVLOG.md](DEVLOG.md)
+### 사용자용 문서
+- **빠른 시작**: [docs/QUICK_START.md](docs/QUICK_START.md) - 5분 안에 시작하기
+- **개발 로그**: [DEVLOG.md](DEVLOG.md) - 개발 히스토리
+
+### 개발자용 문서
+- **기능 명세서**: [docs/SPECIFICATION.md](docs/SPECIFICATION.md) - 클래스, 메서드 상세 설명
+- **아키텍처**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - 설계 원칙, 확장 가이드
+- **프로젝트 요약**: [docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md) - 빠른 참조, 온보딩
+- **리팩토링 요약**: [docs/REFACTORING_SUMMARY.md](docs/REFACTORING_SUMMARY.md) - v1.5.0 변경사항
+
+### 기타
 - **라이선스**: 자유롭게 사용 가능
 - **기여**: 버그 리포트, 기능 제안 환영
+- **GitHub**: Issues 및 Pull Requests 환영
 
 ---
 

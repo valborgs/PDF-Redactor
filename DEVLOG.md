@@ -2,7 +2,7 @@
 
 ## 프로젝트 개요
 - **프로젝트명**: PDF Mask
-- **버전**: v1.5
+- **버전**: v1.5.0
 - **설명**: PDF 마스킹 프로그램 (개인정보 영구 제거)
 - **Python 버전**: 3.12
 - **주요 라이브러리**: PyQt6, PyMuPDF (fitz), openpyxl
@@ -15,11 +15,12 @@
 |------|------|----------|
 | 2025-11-17 | 1-4단계 | GUI 구조, PDF 렌더링, 마스킹 선택, 데이터 관리 |
 | 2025-11-17 | 5-7단계 | Redaction 저장, 폴더 작업, UI/UX 개선 |
-| 2025-11-18 | 5-9단계 | 백업, 인증, JSON 데이터, 진행상황, 로그 |
+| 2025-11-18 | 8-9단계 | 백업, 인증, JSON 데이터, 진행상황, 로그 |
+| 2025-11-19 | 리팩토링 | 프로젝트 모듈화, 문서화, 구조 개선 |
 
 ---
 
-## 📋 구현 완료 기능 (v1.5)
+## 📋 구현 완료 기능 (v1.5.0)
 
 ### 기본 기능
 - ✅ PyQt6 기반 3단 레이아웃 (마스킹 리스트 / PDF 뷰 / 파일 목록)
@@ -49,62 +50,107 @@
 - ✅ **진행 상황**: 폴더 작업 중단/복구 (`progress.json`)
 - ✅ **로그 기록**: 일자별 로그 (`pdfmask_YYYYMMDD.log`)
 
+### 프로젝트 구조 개선 (v1.5.0 신규)
+- ✅ **모듈화**: 코드를 기능별 모듈로 분리 (core, managers, ui, utils)
+- ✅ **문서화**: 5개의 상세 개발자 문서 작성 (총 3800줄)
+- ✅ **유지보수성**: 파일당 평균 150줄로 관리 용이
+- ✅ **확장성**: 명확한 책임 분담 및 확장 가이드 제공
+
 ---
 
-## 🔧 주요 클래스 구조
+## 🔧 주요 클래스 구조 (v1.5.0 모듈화)
 
-### 코어 클래스
+### 📂 프로젝트 구조
+```
+src/
+├── main.py (50줄)              # 진입점
+└── pdfmask/
+    ├── core/                    # 데이터 모델
+    │   └── models.py           # MaskEntry
+    ├── managers/                # 비즈니스 로직
+    │   ├── license_manager.py  # 라이선스 인증
+    │   ├── pdf_manager.py      # PDF 처리
+    │   ├── mask_data_manager.py # 데이터 영속화
+    │   ├── progress_manager.py # 진행상황 관리
+    │   └── log_manager.py      # 로그 관리
+    ├── ui/                      # UI 컴포넌트
+    │   ├── main_window.py      # 메인 윈도우
+    │   ├── pdf_view.py         # PDF 뷰어
+    │   └── dialogs.py          # 다이얼로그
+    └── utils/                   # 유틸리티
+```
+
+### Core 모듈 (`pdfmask.core`)
+
+**MaskEntry (dataclass)**
+- 마스킹 정보 데이터 구조
+- 페이지 인덱스, 좌표, 메모 저장
+
+### Managers 모듈 (`pdfmask.managers`)
 
 **PdfDocumentManager**
 - PDF 로드, 페이지 렌더링 (zoom 지원)
 - Redaction 적용 및 저장
 
-**PdfPageView (QWidget)**
+**LicenseManager** (`license_manager.py`)
+```python
+is_licensed() -> bool
+validate_serial(serial: str) -> Tuple[bool, str]
+activate_license(serial: str) -> Tuple[bool, str]
+deactivate_license() -> None
+```
+- 라이선스 파일: `.license` (JSON)
+- 시리얼 형식: XXXX-XXXX-XXXX-XXXX
+- SHA256 해시로 저장
+
+**MaskDataManager** (`mask_data_manager.py`)
+```python
+save_masks(pdf_path: str, masks: List[MaskEntry]) -> Tuple[bool, str]
+load_masks(pdf_path: str) -> Tuple[bool, List[MaskEntry], str]
+delete_masks(pdf_path: str) -> Tuple[bool, str]
+```
+- 일자별 통합 JSON 파일 (`mask_data_YYYYMMDD.json`)
+- 파일명을 키로 사용
+
+**ProgressManager** (`progress_manager.py`)
+```python
+save_progress(...) -> Tuple[bool, str]
+load_progress() -> Tuple[bool, Dict, str]
+clear_progress() -> Tuple[bool, str]
+```
+- 폴더 작업 진행 상황 추적 (`progress.json`)
+- 완료 파일 목록 관리
+
+**LogManager** (`log_manager.py`)
+```python
+log_app_start() / log_app_end()
+log_pdf_open(file_path)
+log_folder_open(folder_path, file_count)
+log_mask_save(file_path, masks)  # 상세 좌표 포함
+log_error(operation, error_message)
+```
+- 일자별 로그 파일 (`pdfmask_YYYYMMDD.log`)
+- UTF-8 인코딩 (한글 지원)
+
+### UI 모듈 (`pdfmask.ui`)
+
+**MainWindow** (`main_window.py`)
+- UI 관리 및 워크플로우 제어
+- 이벤트 처리 및 데이터 동기화
+- 메뉴, 툴바, 단축키 관리
+
+**PdfPageView** (`pdf_view.py`)
 - 마우스 드래그 마스킹 선택
 - 화면 ↔ PDF 좌표 변환
 - 마스킹 영역 시각화
 
-**MainWindow**
-- UI 관리 및 워크플로우 제어
-- 이벤트 처리 및 데이터 동기화
+**ScrollablePdfView** (`pdf_view.py`)
+- 스크롤 및 줌 기능
+- PDF 페이지 컨테이너
 
-### 관리자 클래스 (v1.5)
-
-**LicenseManager**
-  ```python
-is_licensed() -> bool
-validate_serial(serial: str) -> tuple[bool, str]
-activate_license(serial: str) -> tuple[bool, str]
-```
-- 라이선스 파일: `.license` (JSON)
-- 시리얼 형식: XXXX-XXXX-XXXX-XXXX
-
-**MaskDataManager**
-```python
-save_masks(pdf_path: str, masks: list[MaskEntry]) -> None
-load_masks(pdf_path: str) -> list[MaskEntry]
-```
-- 일자별 통합 JSON 파일
-- 파일 경로를 키로 사용
-
-**ProgressManager**
-```python
-save_progress(folder_path, pdf_files, completed_files, current_index)
-load_progress() -> Optional[dict]
-clear_progress()
-```
-- 폴더 작업 진행 상황 추적
-- 완료 파일 목록 관리
-
-**LogManager**
-```python
-log_app_start() / log_app_end()
-log_pdf_open(file_path)
-log_mask_save(file_path, masks)  # 상세 좌표 포함
-log_error(operation, error_message)
-```
-- 일자별 로그 파일
-- UTF-8 인코딩 (한글 지원)
+**SerialInputDialog** (`dialogs.py`)
+- 라이선스 인증 다이얼로그
+- 시리얼 번호 입력 및 검증
 
 ---
 
@@ -237,24 +283,39 @@ class PdfPageView(QWidget):
 
 ---
 
-## 📂 파일 구조
+## 📂 파일 구조 (v1.5.0)
 ```
 pdfmask/
-├── main.py                    # 메인 애플리케이션
-├── pyproject.toml             # 의존성 설정
-├── .gitignore                 # Git 제외 목록
+├── src/                       # 소스 코드
+│   ├── main.py               # 애플리케이션 진입점 (50줄)
+│   └── pdfmask/              # 메인 패키지
+│       ├── core/             # 데이터 모델
+│       ├── managers/         # 비즈니스 로직 (5개 파일)
+│       ├── ui/               # UI 컴포넌트 (3개 파일)
+│       └── utils/            # 유틸리티
 │
-├── backup/                    # PDF 백업 (일자별)
+├── docs/                      # 개발자 문서
+│   ├── SPECIFICATION.md      # 기능 명세서 (1500줄)
+│   ├── ARCHITECTURE.md       # 아키텍처 문서 (800줄)
+│   ├── PROJECT_SUMMARY.md    # 프로젝트 요약 (600줄)
+│   ├── REFACTORING_SUMMARY.md # 리팩토링 요약 (500줄)
+│   └── QUICK_START.md        # 빠른 시작 가이드 (400줄)
+│
+├── backup/                    # PDF 백업 (일자별, 자동 생성)
 │   └── YYYYMMDD/*.pdf
 │
-├── masks_data/                # 마스킹 데이터 (일자별)
+├── masks_data/                # 마스킹 데이터 (일자별, 자동 생성)
 │   └── mask_data_YYYYMMDD.json
 │
-├── logs/                      # 로그 파일 (일자별)
+├── logs/                      # 로그 파일 (일자별, 자동 생성)
 │   └── pdfmask_YYYYMMDD.log
 │
 ├── progress.json              # 진행 상황 (자동 생성/삭제)
-└── .license                   # 라이선스 파일
+├── .license                   # 라이선스 파일
+├── pyproject.toml             # 프로젝트 설정
+├── README.md                  # 사용자 가이드
+├── DEVLOG.md                  # 개발 로그 (본 문서)
+└── main.py.backup             # 이전 버전 백업
 ```
 
 ---
@@ -367,7 +428,19 @@ dependencies = [
 
 ## 버전 히스토리
 
-### v1.5 (2025-11-18)
+### v1.5.0 (2025-11-19) - 리팩토링 및 문서화
+- ✨ **프로젝트 모듈화**: 단일 파일(2000줄) → 모듈별 분리(평균 150줄)
+- 📚 **문서화 완료**: 5개의 개발자 문서 작성 (총 3800줄)
+  - SPECIFICATION.md (기능 명세서)
+  - ARCHITECTURE.md (아키텍처 문서)
+  - PROJECT_SUMMARY.md (프로젝트 요약)
+  - REFACTORING_SUMMARY.md (리팩토링 요약)
+  - QUICK_START.md (빠른 시작 가이드)
+- 🔧 **유지보수성 향상**: 명확한 책임 분담, 확장 가이드
+- 📂 **구조 개선**: core, managers, ui, utils 모듈 분리
+- 📖 **온보딩 개선**: 새 개발자를 위한 상세 가이드
+
+### v1.5 (2025-11-18) - 데이터 관리 강화
 - ✨ PDF 자동 백업 기능
 - ✨ 라이선스 인증 시스템
 - ✨ 마스킹 데이터 JSON 저장
@@ -376,7 +449,7 @@ dependencies = [
 - 🔧 도움말 메뉴 추가
 - 🔧 툴바 아이콘 추가
 
-### v1.0 (2025-11-17)
+### v1.0 (2025-11-17) - 첫 번째 릴리스
 - 🎉 첫 번째 정식 릴리스
 - ✅ 기본 마스킹 기능
 - ✅ 폴더 일괄 처리
@@ -384,4 +457,25 @@ dependencies = [
 
 ---
 
-**PDF Mask v1.5** - 전문적인 PDF 개인정보 마스킹 솔루션
+## 📊 프로젝트 통계 (v1.5.0)
+
+### 코드 라인 수
+- **총 Python 코드**: ~2000줄 (변경 없음)
+- **main.py**: 2000줄 → 50줄 (95% 감소)
+- **모듈 파일**: 0개 → 13개
+- **평균 파일 크기**: 2000줄 → 150줄
+
+### 문서 라인 수
+- **개발자 문서**: 0줄 → 3800줄
+- **README.md**: 업데이트됨
+- **DEVLOG.md**: 업데이트됨
+
+### 모듈 구성
+- **core**: 1개 파일 (MaskEntry)
+- **managers**: 5개 파일 (5개 Manager)
+- **ui**: 3개 파일 (4개 클래스)
+- **utils**: 준비됨 (향후 확장)
+
+---
+
+**PDF Mask v1.5.0** - 유지보수 가능한 전문적인 PDF 개인정보 마스킹 솔루션

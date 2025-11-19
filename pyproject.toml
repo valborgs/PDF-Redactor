@@ -1,7 +1,7 @@
 [project]
 name = "pdfmask"
-version = "0.1.0"
-description = "Add your description here"
+version = "1.5.0"
+description = "PDF 마스킹 프로그램 - PyQt6 기반 GUI 애플리케이션"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -9,3 +9,6 @@ dependencies = [
     "pymupdf>=1.26.6",
     "pyqt6>=6.5.0",
 ]
+
+[project.scripts]
+pdfmask = "main:main"
