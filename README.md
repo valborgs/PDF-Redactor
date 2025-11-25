@@ -12,6 +12,23 @@ PyQt6와 PyMuPDF를 기반으로 한 전문적인 PDF 문서 마스킹 도구입
 - 📊 **작업 이력 관리**: JSON 로그 및 상세 로그 자동 기록
 - 🔒 **라이선스 인증**: 시리얼 번호 기반 접근 제어
 
+### 실행 화면
+![pdfmaskpc1]()
+![pdfmaskpc2]()
+![pdfmaskpc3]()
+
+<table>
+  <tbody>
+    <tr><td>1. 실행 및 불러오기</td></tr>
+    <tr><td><img src="https://github.com/user-attachments/assets/6b082e43-e106-49bd-bbb0-7d5344e87c94" height="250px" /></td></tr>
+    <tr><td>2. 마스킹 작업</td></tr>
+    <tr><td><img src="https://github.com/user-attachments/assets/4baa0f26-f1f3-4721-aa2b-af25e64128a2" height="250px" /></td></tr>
+    <tr><td>3. 마스킹 결과 확인</td></tr>
+    <tr><td><img src="https://github.com/user-attachments/assets/9d46a72a-eaa6-4c33-8b2b-6c74ec722d7f" height="250px" /></td></tr>
+  </tbody>
+</table>
+
+
 ## 🚀 빠른 시작
 
 ### 설치
