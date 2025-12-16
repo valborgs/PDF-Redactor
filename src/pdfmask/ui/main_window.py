@@ -3,7 +3,7 @@
 """
 
 import os
-import shutil
+import sys
 from datetime import datetime
 from typing import Optional
 
@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
 )
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QKeySequence, QAction
+from PyQt6.QtGui import QKeySequence, QAction, QIcon
 from PyQt6.QtWidgets import QStyle
 from PyQt6.QtGui import QShortcut
 
@@ -69,9 +69,6 @@ class MainWindow(QMainWindow):
         self.completed_files: list[str] = []  # 완료된 파일 리스트
         self.current_folder_path: str = ""  # 현재 작업 중인 폴더 경로
         
-        # 백업 설정
-        self.backup_enabled: bool = True  # 백업 활성화 여부 (기본값: 활성화)
-        
         self.init_ui()
         self.setup_menu()
         self.setup_toolbar()
@@ -82,6 +79,11 @@ class MainWindow(QMainWindow):
         """UI 초기화"""
         self.setWindowTitle("PDF Mask - PDF 마스킹 프로그램")
         self.setGeometry(100, 100, 1400, 900)
+        
+        # 윈도우 아이콘 설정
+        icon_path = self._get_icon_path()
+        if icon_path and os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
         
         # Dock Widget 도킹 옵션 설정
         self.setDockOptions(
@@ -215,17 +217,7 @@ class MainWindow(QMainWindow):
         exit_action.setShortcut(QKeySequence("Ctrl+Q"))
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
-        
-        # 설정 메뉴
-        settings_menu = menubar.addMenu("설정(&S)")
-        
-        # 백업 활성화/비활성화 액션
-        self.backup_toggle_action = QAction("PDF 백업 활성화", self)
-        self.backup_toggle_action.setCheckable(True)
-        self.backup_toggle_action.setChecked(self.backup_enabled)
-        self.backup_toggle_action.triggered.connect(self.toggle_backup)
-        settings_menu.addAction(self.backup_toggle_action)
-        
+
         # 보기 메뉴
         view_menu = menubar.addMenu("보기(&V)")
         
@@ -397,12 +389,18 @@ class MainWindow(QMainWindow):
     def show_about_dialog(self) -> None:
         """프로그램 정보 다이얼로그 표시"""
         about_text = (
-            "PDF Mask v1.5\n\n"
-            "PDF 문서의 민감한 정보를 마스킹하기 위한 PyQt6 기반 도구입니다.\n"
-            "PyMuPDF를 사용하여 PDF를 렌더링하고, Redaction 기능으로 내용을 영구적으로 가립니다.\n\n"
-            "제작: PDF Mask Development Team"
+            "<b>PDF Mask v1.5</b><br><br>"
+            "PDF 문서의 민감한 정보를 마스킹하기 위한 PyQt6 기반 도구입니다.<br>"
+            "PyMuPDF를 사용하여 PDF를 렌더링하고, Redaction 기능으로 내용을 영구적으로 가립니다.<br><br>"
+            "제작: PDF Mask Development Team<br><br>"
+            "후원: <a href='https://ums1212.github.io/Privacy-Policy-And-Terms-Conditions/buycoffee/index.html'>개발자 홈페이지</a>"
         )
-        QMessageBox.information(self, "정보", about_text)
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("정보")
+        msg_box.setTextFormat(Qt.TextFormat.RichText)
+        msg_box.setText(about_text)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.exec()
 
     def reload_current_pdf(self) -> None:
         """현재 PDF 파일을 다시 로드"""
@@ -534,43 +532,51 @@ class MainWindow(QMainWindow):
         status = "활성화" if self.backup_enabled else "비활성화"
         print(f"PDF 백업 {status}")
 
-    def backup_current_pdf(self) -> tuple[bool, str]:
-        """현재 PDF 파일을 백업 폴더에 복사"""
+    def get_result_path(self) -> tuple[bool, str]:
+        """마스킹 결과물 저장 경로 생성"""
         if self.pdf_manager.file_path is None:
-            return False, "백업할 PDF 파일이 없습니다."
+            return False, "저장할 PDF 파일이 없습니다."
         
         try:
             pdf_path = self.pdf_manager.file_path
             pdf_filename = os.path.basename(pdf_path)
             
-            # 프로젝트 루트 경로 (src/pdfmask/ui/ -> src/ -> project_root/)
-            current_file = os.path.abspath(__file__)
-            ui_dir = os.path.dirname(current_file)        # ui/
-            pdfmask_dir = os.path.dirname(ui_dir)         # pdfmask/
-            src_dir = os.path.dirname(pdfmask_dir)        # src/
-            project_root = os.path.dirname(src_dir)       # project_root/
+            # 실행 환경에 따른 기본 경로 결정
+            if getattr(sys, 'frozen', False):
+                # PyInstaller로 패키징된 exe 실행 시
+                # exe 파일이 있는 폴더 사용
+                app_dir = os.path.dirname(sys.executable)
+                result_base = os.path.join(app_dir, "pdf_result")
+            else:
+                # 개발 환경 (소스 코드 실행 시)
+                current_file = os.path.abspath(__file__)
+                ui_dir = os.path.dirname(current_file)
+                pdfmask_dir = os.path.dirname(ui_dir)
+                src_dir = os.path.dirname(pdfmask_dir)
+                project_root = os.path.dirname(src_dir)
+                result_base = os.path.join(project_root, "pdf_result")
             
-            # 백업 폴더 생성
+            # 결과 폴더 생성 (날짜별)
             today_str = datetime.now().strftime("%Y%m%d")
-            backup_base = os.path.join(project_root, "backup")
-            backup_dir = os.path.join(backup_base, today_str)
+            result_dir = os.path.join(result_base, today_str)
             
-            os.makedirs(backup_dir, exist_ok=True)
+            os.makedirs(result_dir, exist_ok=True)
             
-            # 백업 파일 경로
-            backup_path = os.path.join(backup_dir, pdf_filename)
+            # 결과 파일 경로
+            result_path = os.path.join(result_dir, pdf_filename)
             
-            # 이미 백업된 파일이 있는지 확인
-            if os.path.exists(backup_path):
-                return True, f"이미 백업된 파일: {backup_path}"
+            # 이미 같은 이름의 파일이 있으면 번호 추가
+            if os.path.exists(result_path):
+                name, ext = os.path.splitext(pdf_filename)
+                counter = 1
+                while os.path.exists(result_path):
+                    result_path = os.path.join(result_dir, f"{name}_{counter}{ext}")
+                    counter += 1
             
-            # 파일 복사
-            shutil.copy2(pdf_path, backup_path)
-            
-            return True, backup_path
+            return True, result_path
             
         except Exception as e:
-            return False, f"백업 실패: {str(e)}"
+            return False, f"결과 경로 생성 실패: {str(e)}"
 
     def export_masks_to_excel(self) -> None:
         """마스킹 작업 내역을 엑셀 파일로 저장"""
@@ -598,16 +604,22 @@ class MainWindow(QMainWindow):
         try:
             # 저장 경로 및 파일명 구성
             pdf_path = self.pdf_manager.file_path
-            # 프로젝트 최상위 경로 찾기
-            # 현재 파일: src/pdfmask/ui/main_window.py → 4단계 위로 올라가서 프로젝트 루트
-            current_file = os.path.abspath(__file__)  # .../src/pdfmask/ui/main_window.py
-            ui_dir = os.path.dirname(current_file)     # .../src/pdfmask/ui
-            pdfmask_dir = os.path.dirname(ui_dir)      # .../src/pdfmask
-            src_dir = os.path.dirname(pdfmask_dir)     # .../src
-            project_root = os.path.dirname(src_dir)    # .../ (프로젝트 루트)
-            xls_dir = os.path.join(project_root, "xls")
             
-            # xls 폴더가 없으면 생성
+            # 실행 환경에 따른 기본 경로 결정
+            if getattr(sys, 'frozen', False):
+                # PyInstaller로 패키징된 exe 실행 시
+                app_dir = os.path.dirname(sys.executable)
+                xls_dir = os.path.join(app_dir, "xlsx_result")
+            else:
+                # 개발 환경 (소스 코드 실행 시)
+                current_file = os.path.abspath(__file__)
+                ui_dir = os.path.dirname(current_file)
+                pdfmask_dir = os.path.dirname(ui_dir)
+                src_dir = os.path.dirname(pdfmask_dir)
+                project_root = os.path.dirname(src_dir)
+                xls_dir = os.path.join(project_root, "xlsx_result")
+            
+            # xlsx_result 폴더가 없으면 생성
             os.makedirs(xls_dir, exist_ok=True)
             
             today_str = datetime.now().strftime("%Y%m%d")
@@ -639,13 +651,7 @@ class MainWindow(QMainWindow):
 
             # 파일 저장
             wb.save(save_path)
-            
-            # 저장 완료 메시지
-            QMessageBox.information(
-                self,
-                "저장 완료",
-                f"엑셀 파일이 저장되었습니다.\n\n경로: {save_path}"
-            )
+            print(f"엑셀 파일 저장 완료: {save_path}")
 
         except Exception as e:
             QMessageBox.critical(
@@ -796,30 +802,23 @@ class MainWindow(QMainWindow):
             reply = QMessageBox.question(
                 self,
                 "마스킹 저장",
-                "현재 PDF 파일의 마스킹 작업 내용을 저장하시겠습니까?",
+                "현재 PDF 파일의 마스킹 작업 내용을 저장하시겠습니까?\n(원본 파일은 유지되고 마스킹본이 별도 저장됩니다)",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.Yes
             )
             
             if reply == QMessageBox.StandardButton.Yes:
                 try:
-                    # 백업 수행
-                    if self.backup_enabled:
-                        backup_success, backup_msg = self.backup_current_pdf()
-                        
-                        if not backup_success:
-                            retry_reply = QMessageBox.warning(
-                                self,
-                                "백업 실패",
-                                f"{backup_msg}\n\n백업 없이 계속 진행하시겠습니까?",
-                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                QMessageBox.StandardButton.No
-                            )
-                            
-                            if retry_reply == QMessageBox.StandardButton.No:
-                                return
-                        else:
-                            print(f"백업 완료: {backup_msg}")
+                    # 결과 파일 경로 생성
+                    path_success, result_path = self.get_result_path()
+                    
+                    if not path_success:
+                        QMessageBox.warning(
+                            self,
+                            "경로 오류",
+                            f"결과 파일 경로를 생성할 수 없습니다.\n\n{result_path}"
+                        )
+                        return
                     
                     # 마스킹 데이터 JSON 저장
                     json_success, json_msg = self.mask_data_manager.save_masks(
@@ -829,8 +828,8 @@ class MainWindow(QMainWindow):
                     if json_success:
                         print(f"마스킹 데이터 JSON 저장: {json_msg}")
                     
-                    # 마스킹 적용 및 저장
-                    self.pdf_manager.apply_masks_and_save(self.masks)
+                    # 마스킹 적용 및 결과 파일로 저장 (원본 유지)
+                    self.pdf_manager.apply_masks_and_save(self.masks, result_path)
                     
                     # 마스킹 내역 엑셀 저장
                     self.export_masks_to_excel()
@@ -845,7 +844,7 @@ class MainWindow(QMainWindow):
                     QMessageBox.information(
                         self,
                         "저장 완료",
-                        f"총 {len(self.masks)}개의 마스킹이 적용되어 저장되었습니다."
+                        f"총 {len(self.masks)}개의 마스킹이 적용되었습니다.\n\n저장 위치: {result_path}"
                     )
                     
                     # 마스킹 데이터 초기화
@@ -907,6 +906,9 @@ class MainWindow(QMainWindow):
             
             if reply == QMessageBox.StandardButton.Yes:
                 self.load_pdf_from_list(next_index)
+            else:
+                # 다음 파일 열지 않으면 현재 화면 초기화
+                self.clear_pdf_view()
         else:
             # 마지막 파일인 경우
             if self.current_pdf_index == len(self.pdf_files) - 1:
@@ -918,6 +920,27 @@ class MainWindow(QMainWindow):
                     "완료",
                     "폴더의 모든 PDF 파일 작업이 완료되었습니다."
                 )
+            
+            # 화면 초기화
+            self.clear_pdf_view()
+    
+    def clear_pdf_view(self) -> None:
+        """PDF 화면 초기화"""
+        # PDF 문서 닫기
+        self.pdf_manager.close()
+        
+        # 화면 초기화
+        self.pdf_view.clear()
+        self.pdf_file_list.clear()
+        self.pdf_files.clear()
+        self.current_pdf_index = -1
+        self.current_folder_path = ""
+        
+        # 윈도우 제목 초기화
+        self.setWindowTitle("PDF Mask - PDF 마스킹 프로그램")
+        
+        # 상태바 초기화
+        self.statusBar().showMessage("준비 (Ctrl + 드래그로 마스킹 영역 선택)")
 
     def on_mask_created(self, page_index: int, rect: fitz.Rect) -> None:
         """마스킹 영역이 생성되었을 때 호출되는 슬롯"""
@@ -954,6 +977,28 @@ class MainWindow(QMainWindow):
                 new_note = item.text()
                 self.masks[row].note = new_note
                 print(f"Mask [{row}] note updated: '{new_note}'")
+
+    def _get_icon_path(self) -> Optional[str]:
+        """아이콘 파일 경로 찾기"""
+        # 프로젝트 루트에서 logo.ico 찾기
+        current_file = os.path.abspath(__file__)
+        ui_dir = os.path.dirname(current_file)
+        pdfmask_dir = os.path.dirname(ui_dir)
+        src_dir = os.path.dirname(pdfmask_dir)
+        project_root = os.path.dirname(src_dir)
+        
+        icon_path = os.path.join(project_root, "logo.ico")
+        if os.path.exists(icon_path):
+            return icon_path
+        
+        # PyInstaller 패키징된 경우
+        if getattr(sys, 'frozen', False):
+            base_path = sys._MEIPASS
+            icon_path = os.path.join(base_path, "logo.ico")
+            if os.path.exists(icon_path):
+                return icon_path
+        
+        return None
 
     def closeEvent(self, event) -> None:
         """윈도우 종료 이벤트"""

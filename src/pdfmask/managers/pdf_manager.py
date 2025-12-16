@@ -102,7 +102,7 @@ class PdfDocumentManager:
             print(f"페이지 렌더링 오류: {str(e)}")
             return None
 
-    def apply_masks_and_save(self, masks: list[MaskEntry]) -> None:
+    def apply_masks_and_save(self, masks: list[MaskEntry], output_path: Optional[str] = None) -> None:
         """
         마스킹을 PDF에 적용하고 저장
         
@@ -110,12 +110,16 @@ class PdfDocumentManager:
         
         Args:
             masks: 적용할 마스킹 정보 리스트
+            output_path: 저장할 파일 경로 (None이면 원본 파일에 저장)
             
         Raises:
             Exception: 문서가 없거나 저장 중 오류 발생 시
         """
         if self.doc is None or self.file_path is None:
             raise Exception("열린 PDF 문서가 없습니다.")
+        
+        # 저장 경로 결정
+        save_path = output_path if output_path else self.file_path
         
         try:
             # 페이지별로 마스크 적용
@@ -141,13 +145,18 @@ class PdfDocumentManager:
             
             print("모든 페이지의 Redaction 적용 완료")
             
-            # 파일 저장 (incremental 저장)
-            self.doc.save(
-                self.file_path,
-                incremental=True,
-                encryption=fitz.PDF_ENCRYPT_KEEP
-            )
-            print(f"파일 저장 완료: {self.file_path}")
+            # 파일 저장
+            if output_path:
+                # 별도 파일로 저장 (새 파일 생성)
+                self.doc.save(save_path)
+            else:
+                # 원본 파일에 저장 (incremental 저장)
+                self.doc.save(
+                    save_path,
+                    incremental=True,
+                    encryption=fitz.PDF_ENCRYPT_KEEP
+                )
+            print(f"파일 저장 완료: {save_path}")
             
         except Exception as e:
             error_msg = str(e)
@@ -157,7 +166,7 @@ class PdfDocumentManager:
                     "파일 저장 권한이 없습니다.\n\n"
                     "PDF 파일이 다른 프로그램(Adobe Reader, 웹 브라우저 등)에서 열려있을 수 있습니다.\n"
                     "해당 프로그램을 종료한 후 다시 시도해주세요.\n\n"
-                    f"파일 경로: {self.file_path}"
+                    f"파일 경로: {save_path}"
                 )
             else:
                 raise Exception(f"마스킹 저장 중 오류 발생: {error_msg}")

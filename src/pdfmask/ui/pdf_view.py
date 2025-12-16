@@ -97,6 +97,19 @@ class PdfPageView(QWidget):
         """
         self._zoom_level = zoom
     
+    def clear(self) -> None:
+        """화면 초기화"""
+        self._pixmap = None
+        self._page_index = 0
+        self._page_width = 0.0
+        self._page_height = 0.0
+        self._saved_masks = []
+        self._start_pos = None
+        self._current_rect = None
+        self._ctrl_pressed_during_drag = False
+        self.setMinimumSize(400, 300)
+        self.update()
+    
     def paintEvent(self, event) -> None:
         """페이지 렌더링"""
         painter = QPainter(self)
