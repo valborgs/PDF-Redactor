@@ -190,13 +190,15 @@ class PdfPageView(QWidget):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             # Ctrl이 눌린 상태에서는 확대/축소만 처리
             delta = event.angleDelta().y()
-            parent = self.parent()
+            # QScrollArea.setWidget()으로 추가된 위젯의 parent()는 viewport이므로
+            # window()를 사용하여 MainWindow를 찾아 확대/축소 호출
+            main_window = self.window()
             if delta > 0:
-                if parent is not None and hasattr(parent, "zoom_in"):
-                    parent.zoom_in()
+                if main_window is not None and hasattr(main_window, "zoom_in"):
+                    main_window.zoom_in()
             else:
-                if parent is not None and hasattr(parent, "zoom_out"):
-                    parent.zoom_out()
+                if main_window is not None and hasattr(main_window, "zoom_out"):
+                    main_window.zoom_out()
             event.accept()
         else:
             # Ctrl이 아닐 때는 기본 스크롤 동작 유지
@@ -297,15 +299,17 @@ class ScrollablePdfView(QScrollArea):
         """줌 인 (10% 증가)"""
         if self.zoom_level < self.max_zoom:
             self.zoom_level = min(self.zoom_level + 0.1, self.max_zoom)
-            if hasattr(self.parent(), 'update_page_view'):
-                self.parent().update_page_view()
+            main_window = self.window()
+            if main_window is not None and hasattr(main_window, 'update_page_view'):
+                main_window.update_page_view()
     
     def zoom_out(self) -> None:
         """줌 아웃 (10% 감소)"""
         if self.zoom_level > self.min_zoom:
             self.zoom_level = max(self.zoom_level - 0.1, self.min_zoom)
-            if hasattr(self.parent(), 'update_page_view'):
-                self.parent().update_page_view()
+            main_window = self.window()
+            if main_window is not None and hasattr(main_window, 'update_page_view'):
+                main_window.update_page_view()
 
     def wheelEvent(self, event) -> None:
         """마우스 휠 이벤트 (Ctrl + 휠로 줌)"""
