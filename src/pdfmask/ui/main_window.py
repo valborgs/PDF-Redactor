@@ -28,11 +28,13 @@ from PyQt6.QtGui import QShortcut
 from ..core.models import MaskEntry
 from ..managers import (
     PdfDocumentManager,
+    PasswordRequiredException,
     MaskDataManager,
     ProgressManager,
     LogManager,
 )
 from .pdf_view import ScrollablePdfView
+from .dialogs import PasswordInputDialog
 
 
 class MainWindow(QMainWindow):
@@ -436,11 +438,19 @@ class MainWindow(QMainWindow):
         self.masks.clear()
         self.mask_list.setRowCount(0)
 
-    def load_pdf_from_path(self, file_path: str) -> None:
-        """지정된 경로의 PDF 파일 로드"""
+    def load_pdf_from_path(self, file_path: str, password: str = "") -> bool:
+        """지정된 경로의 PDF 파일 로드
+        
+        Args:
+            file_path: PDF 파일 경로
+            password: PDF 암호 (암호화된 PDF인 경우)
+            
+        Returns:
+            bool: 로드 성공 여부
+        """
         try:
             # PDF 로드
-            self.pdf_manager.load_pdf(file_path)
+            self.pdf_manager.load_pdf(file_path, password)
             
             # 마스킹 데이터 초기화
             self.clear_masks()
@@ -483,7 +493,23 @@ class MainWindow(QMainWindow):
             # 로그 기록
             self.log_manager.log_pdf_open(file_path)
             print(f"PDF 로드 성공: {file_path}")
+            return True
             
+        except PasswordRequiredException as e:
+            # 암호 입력 다이얼로그 표시
+            error_msg = str(e) if password else ""
+            dialog = PasswordInputDialog(file_path, error_msg, self)
+            
+            if dialog.exec():
+                # 암호 입력 후 재시도
+                new_password = dialog.get_password()
+                return self.load_pdf_from_path(file_path, new_password)
+            else:
+                # 취소 시 PDF 화면 및 파일 목록 초기화
+                print(f"PDF 암호 입력 취소: {file_path}")
+                self.clear_masks()
+                self.clear_pdf_view()
+                return False
         except Exception as e:
             QMessageBox.critical(
                 self,
@@ -491,6 +517,7 @@ class MainWindow(QMainWindow):
                 f"PDF 파일을 열 수 없습니다.\n\n{str(e)}"
             )
             print(f"PDF 로드 실패: {str(e)}")
+            return False
 
     def load_pdf_from_list(self, index: int) -> None:
         """PDF 파일 목록에서 지정된 인덱스의 PDF 로드"""
@@ -667,7 +694,10 @@ class MainWindow(QMainWindow):
         )
         
         if file_path:
-            self.load_pdf_from_path(file_path)
+            # PDF 로드 시도
+            if not self.load_pdf_from_path(file_path):
+                # 로드 실패 시 (암호 취소 등) 아무 작업 안 함
+                return
             
             # 단일 파일 열기
             self.pdf_files = [file_path]

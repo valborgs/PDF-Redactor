@@ -9,6 +9,11 @@ from PyQt6.QtGui import QPixmap, QImage
 from ..core.models import MaskEntry
 
 
+class PasswordRequiredException(Exception):
+    """PDF 암호가 필요할 때 발생하는 예외"""
+    pass
+
+
 class PdfDocumentManager:
     """
     PDF 문서 로드, 렌더링, 마스킹 적용 클래스
@@ -23,14 +28,16 @@ class PdfDocumentManager:
         self.doc: Optional[fitz.Document] = None
         self.file_path: Optional[str] = None
 
-    def load_pdf(self, path: str) -> None:
+    def load_pdf(self, path: str, password: str = "") -> None:
         """
         PDF 파일 로드
         
         Args:
             path: PDF 파일 경로
+            password: PDF 암호 (암호화된 PDF인 경우)
             
         Raises:
+            PasswordRequiredException: 암호가 필요한 경우
             Exception: PDF 파일 로드 실패 시
         """
         try:
@@ -41,8 +48,24 @@ class PdfDocumentManager:
 
             # 새 문서 열기
             self.doc = fitz.open(path)
+            
+            # 암호화된 PDF 확인
+            if self.doc.is_encrypted:
+                # 암호 인증 시도
+                if not self.doc.authenticate(password):
+                    # 암호가 없거나 잘못된 경우
+                    self.doc.close()
+                    self.doc = None
+                    if password == "":
+                        raise PasswordRequiredException("이 PDF 파일은 암호로 보호되어 있습니다.")
+                    else:
+                        raise PasswordRequiredException("입력한 암호가 올바르지 않습니다.")
+            
             self.file_path = path
             
+        except PasswordRequiredException:
+            # 암호 예외는 그대로 전달
+            raise
         except Exception as e:
             self.doc = None
             self.file_path = None

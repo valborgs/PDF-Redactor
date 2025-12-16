@@ -117,3 +117,94 @@ class SerialInputDialog(QDialog):
                 message
             )
 
+
+class PasswordInputDialog(QDialog):
+    """
+    PDF 암호 입력 다이얼로그
+    
+    암호화된 PDF 파일을 열기 위한 암호를 입력받습니다.
+    """
+    
+    def __init__(self, file_path: str, error_message: str = "", parent: Optional[QWidget] = None) -> None:
+        """
+        초기화
+        
+        Args:
+            file_path: PDF 파일 경로
+            error_message: 이전 시도에서 발생한 오류 메시지 (선택)
+            parent: 부모 위젯
+        """
+        super().__init__(parent)
+        self.file_path = file_path
+        self.error_message = error_message
+        self.password = ""
+        self.init_ui()
+    
+    def init_ui(self) -> None:
+        """UI 초기화"""
+        self.setWindowTitle("PDF 암호 입력")
+        self.setModal(True)
+        self.setFixedSize(400, 180)
+        
+        layout = QVBoxLayout()
+        
+        # 파일명 표시
+        import os
+        filename = os.path.basename(self.file_path)
+        file_label = QLabel(f"<b>{filename}</b>")
+        file_label.setWordWrap(True)
+        layout.addWidget(file_label)
+        
+        # 안내 문구
+        info_label = QLabel("이 PDF 파일은 암호로 보호되어 있습니다.\n암호를 입력해주세요.")
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+        
+        # 암호 입력
+        self.password_input = QLineEdit()
+        self.password_input.setPlaceholderText("암호 입력")
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_input.returnPressed.connect(self.accept_password)
+        layout.addWidget(self.password_input)
+        
+        # 오류 메시지 (이전 시도 실패 시)
+        self.status_label = QLabel("")
+        self.status_label.setStyleSheet("color: red;")
+        if self.error_message:
+            self.status_label.setText(self.error_message)
+        layout.addWidget(self.status_label)
+        
+        # 버튼 레이아웃
+        button_layout = QHBoxLayout()
+        
+        # 확인 버튼
+        self.ok_button = QPushButton("확인")
+        self.ok_button.clicked.connect(self.accept_password)
+        button_layout.addWidget(self.ok_button)
+        
+        # 취소 버튼
+        cancel_button = QPushButton("취소")
+        cancel_button.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_button)
+        
+        layout.addLayout(button_layout)
+        
+        self.setLayout(layout)
+        
+        # 암호 입력창에 포커스
+        self.password_input.setFocus()
+    
+    def accept_password(self) -> None:
+        """확인 버튼 클릭"""
+        password = self.password_input.text()
+        
+        if not password:
+            self.status_label.setText("암호를 입력해주세요.")
+            return
+        
+        self.password = password
+        self.accept()
+    
+    def get_password(self) -> str:
+        """입력된 암호 반환"""
+        return self.password
